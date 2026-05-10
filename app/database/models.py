@@ -1,8 +1,15 @@
-from sqlalchemy import Column, Integer, Float, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, Float, String, ForeignKey, DateTime, Table
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 
 Base = declarative_base()
+
+simulacion_escenario = Table(
+    'Simulacion_Escenario',
+    Base.metadata,
+    Column('simulacion_id', Integer, ForeignKey('Simulaciones.id', ondelete='CASCADE'), primary_key=True),
+    Column('escenario_id', Integer, ForeignKey('Escenarios.id', ondelete='CASCADE'), primary_key=True)
+)
 
 class Usuario(Base):
     __tablename__ = 'Usuarios'
@@ -15,7 +22,7 @@ class Usuario(Base):
     simulaciones = relationship("Simulacion", back_populates="creado_por_usuario")
     
     def __repr__(self):
-        return f"<User(nombre='{self.nombre}')>"
+        return f"{self.nombre}"
 
 class Escenario(Base):
     __tablename__ = 'Escenarios'
@@ -27,21 +34,22 @@ class Escenario(Base):
     tasa = Column(Float, nullable=False)
     plazo = Column(Integer, nullable=False)
     cuota = Column(Float, nullable=False)
-    
-    # Nueva columna: quién creó el escenario
     creado_por = Column(Integer, ForeignKey('Usuarios.id', ondelete='SET NULL'), nullable=True)
     
     # Relaciones
     abonos = relationship("Abono", back_populates="escenario", cascade="all, delete-orphan")
-    # Relación con Simulación (N escenarios pertenecen a 1 simulación)
-    simulacion_id = Column(Integer, ForeignKey('Simulaciones.id', ondelete='CASCADE'), nullable=False)
-    simulacion = relationship("Simulacion", back_populates="escenarios")
-    
-    # Relación con el usuario que creó el escenario
     usuario_creador = relationship("Usuario", foreign_keys=[creado_por])
+
+    # Relación con Simulación (N escenarios pertenecen a 1 simulación)
+    simulaciones = relationship(
+        "Simulacion", 
+        secondary=simulacion_escenario, 
+        back_populates="escenarios"
+    )
+
     
     def __repr__(self):
-        return f"<Escenario(nombre='{self.nombre}', saldo={self.saldo}, tipo={self.tipo})>"
+        return f"{self.nombre}"
 
 class Abono(Base):
     __tablename__ = 'Abonos'
@@ -60,14 +68,17 @@ class Simulacion(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     nombre = Column(String, nullable=False)
     fecha = Column(String, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    
-    # Relación con el usuario que creó la simulación
     creado_por = Column(Integer, ForeignKey('Usuarios.id', ondelete='SET NULL'), nullable=True)
     
     # Relaciones inversas
-    # 1 Simulación tiene N Escenarios
-    escenarios = relationship("Escenario", back_populates="simulacion", cascade="all, delete-orphan")
+    # N Simulaciones tiene N Escenarios
+    escenarios = relationship(
+        "Escenario", 
+        secondary=simulacion_escenario, 
+        back_populates="simulaciones"
+    )
     creado_por_usuario = relationship("Usuario", back_populates="simulaciones", foreign_keys=[creado_por])
     
     def __repr__(self):
-        return f"<Simulacion(id={self.id}, fecha='{self.fecha}')>"
+        return f"{self.id} - {self.nombre}"
+    

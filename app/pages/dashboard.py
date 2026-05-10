@@ -57,7 +57,7 @@ if simulaciones:
         st.dataframe(res_df.style.highlight_min(subset=['Interés', 'Meses'], color='#1e4d2b'), use_container_width=True)
     
     except Exception as e:
-        print(e)
+        print(f"{e} - Dashboard")
     finally:
         st.info("La simulación aún está vacía")
         st.divider()
@@ -95,17 +95,21 @@ else:
             if guardar:
                 if nombre:
                     with db.obtener_sesion() as sesion:
-                        admin_id = sesion.query(Usuario.id).filter_by(nombre="sam")
+                        creador = sesion.query(Usuario).filter_by(nombre=autor).first()
+                        if not creador:
+                            creador = Usuario(nombre=autor)
+
                         simulacion = Simulacion(
                             nombre=nombre,
-                            creado_por=admin_id
+                            creado_por=creador.id
                         )
                         sesion.add(simulacion)
+                        sesion.add(creador)
                         sesion.commit()
                         sesion.refresh(simulacion)
+                        sesion.refresh(creador)
                         print(st.session_state.escenarios_seleccionados)
-                        #TODO:
-                        # Una alternativa puede estar dentro de varias simulaciones
+
         
 
         st.divider()
