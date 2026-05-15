@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from sqlalchemy.orm import joinedload
 import database.database as db
 from database.models import Simulacion, Escenario, Abono, Usuario
-from core.amortizacion import calcular_tabla_amortizacion
+from core.utiles import crear_tabla_amortizacion, mostrar_datos_escenario
 
 
 # Dashboard
@@ -11,60 +12,99 @@ st.title("📊 SimuLate")
 
 # Cargar datos iniciales
 with db.obtener_sesion() as sesion:
-    simulaciones = sesion.query(Simulacion).all()
-    escenarios = sesion.query(Escenario).all()
-
-    if not sesion.query(Usuario).filter_by(nombre="sam"):
-        admin = Usuario(
-            name="sam",
-            email="sam@spalominor.com"
+    simulaciones = (
+        sesion.query(Simulacion)
+        .options(joinedload(Simulacion.escenarios))
+        .all()
+    )
+    escenarios = (
+            sesion.query(Escenario)
+            .options(joinedload(Escenario.abonos))
+            .all()
         )
-        sesion.add(admin)
-        sesion.commit()
-        sesion.refresh(admin)
 
 
 if simulaciones:
-    try:
-        resultados = []
-        df_grafica = pd.DataFrame()
+    resultados = []
+    resumenes = []
 
-        for nombre, d in escenarios:
-            df_res, int_tot, meses = calcular_tabla_amortizacion(d['saldo'], d['tasa'], d['plazo'], d['cuota'], d['abonos'])
-            resultados.append({"Alt": nombre, "Meses": meses, "Interés": int_tot, "Total": int_tot + d['saldo']})
-            
-            temp_df = df_res[['Mes', 'Saldo']].copy()
-            temp_df['Escenario'] = nombre
-            df_grafica = pd.concat([df_grafica, temp_df])
+    for esc in escenarios:
+        proyeccion = crear_tabla_amortizacion(esc)
+        df_proyeccion = pd.DataFrame(proyeccion)
+        df_proyeccion.columns = df_proyeccion.iloc[0]
+        df_proyeccion = df_proyeccion[1:]
 
-        mejor = min(resultados, key=lambda x: x['Interés'])
-        base = resultados[0] # Asumiendo el primero como base
-        ahorro = base['Interés'] - mejor['Interés']
+        df_proyeccion["ID Escenario"] = esc.id
+        df_proyeccion["Escenario"] = esc.nombre
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Escenarios Activos", len(resultados))
-        c2.metric("Mejor Alternativa", mejor['Alt'])
-        c3.metric("Ahorro Proyectado", f"${ahorro:,.0f}", delta=f"{base['Meses'] - mejor['Meses']} meses menos")
+        resultados.append(df_proyeccion)
+        resumenes.append({
+                    "ID": esc.id,
+                    "Escenario": esc.nombre,
+                    "Meses": len(df_proyeccion),
+                    "Capital": esc.capital,
+                    "Tasa": esc.tasa,
+                    "Intereses": df_proyeccion["Interés"].sum(),
+                    "Proporción Intereses": (df_proyeccion["Interés"].sum() * 100) / esc.capital,
+                    "Abonos Extra": df_proyeccion["Abono Extra"].sum(),
+                    "Total Pagado": df_proyeccion["Cuota Fija"].sum() + df_proyeccion["Abono Extra"].sum()
+            })
 
-        # --- BLOQUE 2: CURVA DE CAPITAL ---
-        st.subheader("Evolución del Saldo")
-        fig = px.line(df_grafica, x="Mes", y="Saldo", color="Escenario", template="plotly_dark")
-        st.plotly_chart(fig, use_container_width=True)
+    # Dataframes globales
+    df_grafica = pd.concat(resultados, ignore_index=True)
+    df_resumen = pd.DataFrame(resumenes)
 
-        # --- BLOQUE 3: TABLA Y RANKING ---
-        st.subheader("Tabla Comparativa")
-        res_df = pd.DataFrame(resultados)
-        st.dataframe(res_df.style.highlight_min(subset=['Interés', 'Meses'], color='#1e4d2b'), use_container_width=True)
+    # Barra de selección de escenarios
+    escenarios_seleccionados = st.multiselect(
+        "Escenarios a comparar",
+        options=df_resumen["Escenario"].tolist(),
+        default=df_resumen["Escenario"].tolist()
+    )
+    df_filtrado = df_grafica[df_grafica["Escenario"].isin(escenarios_seleccionados)]
+    df_resumen_filtrado = df_resumen[df_resumen["Escenario"].isin(escenarios_seleccionados)]
+
+    # Obtener el id del mejor escenario para buscarlo
+    mejor = df_resumen_filtrado.sort_values("Proporción Intereses").iloc[0]
+    mejor_id = int(mejor["ID"])
+
+    # Buscar el escenario
+    with db.obtener_sesion() as sesion:
+        escenario_mejor = (
+                sesion.query(Escenario)
+                .options(joinedload(Escenario.abonos))
+                .filter_by(id=mejor_id).first()
+            )
     
-    except Exception as e:
-        print(f"{e} - Dashboard")
-    finally:
-        st.info("La simulación aún está vacía")
-        st.divider()
-        if st.button("Crear Escenario",
-                    width="stretch",
-                    help="Debes llenar la información de tu préstamo"):
-            st.switch_page("pages/alternativas.py")
+    # Mostrar el dashboard con los indicadores del escenario
+    proyeccion_mejor = df_filtrado[df_filtrado["ID Escenario"] == mejor_id]
+    mostrar_datos_escenario(escenario_mejor, proyeccion_mejor)
+
+
+    # Graficar
+    st.subheader("Curva de capital pendiente")
+
+    fig = px.line(
+        df_filtrado,
+        x="Mes",
+        y="Saldo Final",
+        color="Escenario",
+        markers=True
+    )
+    fig.update_layout(xaxis_title="Mes", yaxis_title="Capital pendiente")
+    st.plotly_chart(fig, width="stretch")
+    st.subheader("Resumen comparativo")
+
+    # Tabla
+    st.dataframe(
+        df_resumen_filtrado.sort_values("Proporción Intereses").style.format({
+            "Capital": "${:,.0f}",
+            "Tasa": "{:,.2f}%",
+            "Intereses": "${:,.0f}",
+            "Proporción Intereses": "{:,.2f}%",
+            "Abonos Extra": "${:,.0f}",
+            "Total Pagado": "${:,.0f}"
+        }), width="stretch", hide_index=True, row_height=50)
+
 
 else:
     st.info("👋 ¡Bienvenido! No tienes simulaciones para mostrar aún")
@@ -110,7 +150,6 @@ else:
                         sesion.refresh(creador)
                         print(st.session_state.escenarios_seleccionados)
 
-        
 
         st.divider()
         if st.button("Crear Escenario",

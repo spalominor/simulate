@@ -4,7 +4,6 @@ from core import utiles
 from database.models import Simulacion, Escenario, Usuario
 
 
-
 # Cargar datos básicos
 with db.obtener_sesion() as sesion:
     simulaciones = sesion.query(Simulacion).all()

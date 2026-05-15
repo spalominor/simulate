@@ -18,21 +18,21 @@ with db.obtener_sesion() as sesion:
 
 with st.expander("Crear abonos", expanded=True):
     if escenarios:
-        with st.form("form_abonos"):
             col1, col2 = st.columns(2)
 
             with col1:
                 escenario_elegido = st.selectbox("Selecciona la alternativa", options=escenarios)
                 if escenario_elegido:
-                    st.text(f"Plazo: {escenario_elegido.plazo} meses")
-                    st.text(f"Capital: {formato_moneda(escenario_elegido.capital)}")
+                    st.metric("Plazo", f"{escenario_elegido.plazo} meses")
+                    st.metric("Capital", f"{formato_moneda(escenario_elegido.capital)}")
 
 
             with col2:
-                periodo = st.number_input("Ingresa el mes del abono", min_value=0, step=6)
-                valor = st.number_input("Ingresa el valor del abono", step=500000)
+                with st.form("form_abonos"):
+                    periodo = st.number_input("Ingresa el mes del abono", min_value=0, step=6)
+                    valor = st.number_input("Ingresa el valor del abono", step=500000)
 
-            guardar = st.form_submit_button("Guardar Abono", type="primary", width="stretch")
+                    guardar = st.form_submit_button("Guardar Abono", type="primary", width="stretch")
             
 
             if guardar:
@@ -56,7 +56,7 @@ with st.expander("Crear abonos", expanded=True):
 
 
 st.divider()
-with st.container():
+with st.container(key="Tabla Abonos"):
     if escenario_elegido:
         # Recuperar el escenario con los abonos actualizados
         with db.obtener_sesion() as sesion:
