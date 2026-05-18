@@ -1,5 +1,5 @@
-import streamlit as st
 import numpy_financial as npf
+import streamlit as st
 from database.models import Escenario
 from core.utiles import formato_moneda, mostrar_proyeccion_escenario
 

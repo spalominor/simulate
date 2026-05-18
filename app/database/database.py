@@ -1,14 +1,16 @@
+import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, scoped_session
 from database.models import Base
 import pandas as pd
 
-# 1. Configuración del Engine y la Sesión
-DATABASE_URL = "sqlite:///simulate.db"
+# Docker configuraciones
+DATA_DIR = "/data"
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+DATABASE_URL = f"sqlite:///{os.path.join(DATA_DIR, 'simulate.db')}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
-# Sessionmaker crea una "fábrica" de sesiones
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def iniciar_db():
