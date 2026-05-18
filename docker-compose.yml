@@ -19,7 +19,7 @@ services:
       retries: 3
 
   cloudflare_tunnel:
-    image: cloudflare/cloudflared:latest
+    image: msfjarvis/cloudflared:latest
     container_name: simulate_tunnel
     restart: unless-stopped
     environment:
