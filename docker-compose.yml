@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   streamlit_app:
     build: .
@@ -19,7 +17,8 @@ services:
       retries: 3
 
   cloudflare_tunnel:
-    image: msfjarvis/cloudflared:latest
+    # Para un rpi en armhf
+    image: cloudflare/cloudflared:latest
     container_name: simulate_tunnel
     restart: unless-stopped
     environment:
